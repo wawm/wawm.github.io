@@ -1,0 +1,107 @@
+# T480 Battery issues
+
+Recently i have accuired T480 lenovo and installed Centos7 on it.
+
+I noticed that the battery management is not so good as per Windows 10 as the laptop has 10 battery and i only got around 4 hours of time using it.
+
+Been searching around the net and found out that TLP can be used for battery management in Linux.
+
+# Installing TLP
+
+```sh
+sudo yum install tlp tlp-rdw
+```
+
+Test by starting TLP
+```sh
+tlp start
+```
+Output
+
+```sh
+TLP started in AC mode
+```
+
+Soon i realised that TLP wasnt working as expected as the kernel module acpi_call was missing
+
+After some digging, found out that the packages can be installed [here](https://github.com/mkottman/acpi_call)
+
+As for me below are how i did it
+
+- Download or clone the github from mkottman
+- Extract and edit acpi_call.c
+
+```sh
+#include <acpi/acpi.h>
+#include <asm/uaccess.h>
+```
+
+with
+
+```sh
+#include <linux/acpi.h>
+#include <linux/uaccess.h>
+```
+- Compile(If you run into issues compiling make sure that you have kernel-devel packages)
+
+```sh
+make
+sudo make install
+```
+
+- If you run into issues on “can’t identify certificate”. I did the fix as below;
+
+- Create config file(for this example is configuration_state.config). Note that you will need to only change the values in O, CN and emailAddress.
+
+```sh
+[ req ]
+default_bits = 4096
+distinguished_name = req_distinguished_name
+prompt = no
+string_mask = utf8only
+x509_extensions = myexts
+
+[ req_distinguished_name ]
+O = spinnaker
+CN = spinnaker
+emailAddress = wanazlan85@gmail.com
+
+[ myexts ]
+basicConstraints=critical,CA:FALSE
+keyUsage=digitalSignature
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid
+```
+
+- Create a new signing certificate
+```sh
+openssl req -x509 -new -nodes -utf8 -sha256 -days 36500 -batch -config configuration_file.config -outform DER -out public_key.der -keyout private_key.priv
+```
+-  Load the key with MOKUTIL. When prompt with a password just enter any password you want
+
+```sh
+mokutil --import public_key.der
+```
+- Reboot the machine and it will prompt for MOKUTIL, choose Enroll Key, and Key0. It will ask for a password, enter the password you choose previously.
+
+- Once rebooted , check if the key is already signed
+```sh
+keyctl list %:.system_keyring
+```
+Output should be something like
+
+```sh
+[root@spinnaker ~]keyctl list %:.system_keyring | grep -i spinnaker
+ 68211213: --alswrv     0     0 asymmetric: spinnaker: 42XXXXXXXXXXXXXXXXXXXXXXXXX
+[root@spinnaker ~]
+```
+- Sign the keys into the module(make sure that the .ko is created as mentioned above, using make install on previous step
+
+```sh
+perl /usr/src/kernels/$(uname -r)/scripts/sign-file sha256 private_key.priv public_key.der acpi_call.ko
+```
+-  Install, load and verify the module
+
+```sh
+insmod acpi_call.ko && modprobe -v acpi_call && lsmod | grep -i acpi_call
+```
