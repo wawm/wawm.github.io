@@ -1,7 +1,7 @@
 name: wawm
-markdown: redcarpet
-pygments: true
-baseurl: /
+#markdown: redcarpet
+#pygments: true
+#baseurl: /
 permalink: pretty
 paginate: 10
 url: http://wawm.github.io
